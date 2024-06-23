@@ -1,9 +1,7 @@
 import torch
-import ollama
-import os 
-from openai import OpenAI
-import argparse
 import json
+import argparse
+from openai import OpenAI
 from transformers import AutoTokenizer, AutoModel
 from sentence_transformers import SentenceTransformer, util
 
@@ -19,26 +17,15 @@ tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
 model = AutoModel.from_pretrained('bert-base-uncased')
 sentence_model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
 
-# Function to open a file and return its contents as a string
-def open_file(filepath):
-    with open(filepath, 'r', encoding='utf-8') as infile:
-        return infile.read()
-
 # Function to get relevant context from the vault based on user input
 def get_relevant_context(rewritten_input, vault_embeddings, vault_content, top_k=3):
-    if len(vault_embeddings) == 0:  # Check if there are any embeddings
+    if len(vault_embeddings) == 0:
         return []
-    # Encode the rewritten input
     input_embedding = sentence_model.encode(rewritten_input, convert_to_tensor=True)
-    # Compute cosine similarity between the input and vault embeddings
     cos_scores = util.pytorch_cos_sim(input_embedding, vault_embeddings)[0]
-    # Adjust top_k if it's greater than the number of available scores
     top_k = min(top_k, len(cos_scores))
-    # Get the top-k indices
     top_indices = torch.topk(cos_scores, k=top_k).indices.tolist()
-    # Get the corresponding context from the vault
-    relevant_context = [vault_content[idx].strip() for idx in top_indices]
-    return relevant_context
+    return [vault_content[idx].strip() for idx in top_indices]
 
 def rewrite_query(user_input_json, conversation_history, ollama_model):
     user_input = json.loads(user_input_json)["Query"]
@@ -67,20 +54,15 @@ def rewrite_query(user_input_json, conversation_history, ollama_model):
         n=1,
         temperature=0.1,
     )
-    rewritten_query = response.choices[0].message.content.strip()
-    return json.dumps({"Rewritten Query": rewritten_query})
+    return json.dumps({"Rewritten Query": response.choices[0].message.content.strip()})
 
 def ollama_chat(user_input, system_message, vault_embeddings, vault_content, ollama_model, conversation_history):
     conversation_history.append({"role": "user", "content": user_input})
     
     if len(conversation_history) > 1:
-        query_json = {
-            "Query": user_input,
-            "Rewritten Query": ""
-        }
+        query_json = {"Query": user_input}
         rewritten_query_json = rewrite_query(json.dumps(query_json), conversation_history, ollama_model)
-        rewritten_query_data = json.loads(rewritten_query_json)
-        rewritten_query = rewritten_query_data["Rewritten Query"]
+        rewritten_query = json.loads(rewritten_query_json)["Rewritten Query"]
         print(PINK + "Original Query: " + user_input + RESET_COLOR)
         print(PINK + "Rewritten Query: " + rewritten_query + RESET_COLOR)
     else:
@@ -93,16 +75,10 @@ def ollama_chat(user_input, system_message, vault_embeddings, vault_content, oll
     else:
         print(CYAN + "No relevant context found." + RESET_COLOR)
     
-    user_input_with_context = user_input
-    if relevant_context:
-        user_input_with_context = user_input + "\n\nRelevant Context:\n" + context_str
-    
+    user_input_with_context = user_input + ("\n\nRelevant Context:\n" + context_str if relevant_context else "")
     conversation_history[-1]["content"] = user_input_with_context
     
-    messages = [
-        {"role": "system", "content": system_message},
-        *conversation_history
-    ]
+    messages = [{"role": "system", "content": system_message}, *conversation_history]
     
     response = client.chat.completions.create(
         model=ollama_model,
@@ -122,10 +98,7 @@ args = parser.parse_args()
 
 # Configuration for the Ollama API client
 print(NEON_GREEN + "Initializing Ollama API client..." + RESET_COLOR)
-client = OpenAI(
-    base_url='http://localhost:11434/v1',
-    api_key='llama3'
-)
+client = OpenAI(base_url='http://localhost:11434/v1', api_key='llama3')
 
 # Load the vault content
 print(NEON_GREEN + "Loading vault content..." + RESET_COLOR)
