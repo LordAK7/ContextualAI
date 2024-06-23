@@ -1,6 +1,7 @@
 import torch
 import json
 import argparse
+import os  # Added this import
 from openai import OpenAI
 from transformers import AutoTokenizer, AutoModel
 from sentence_transformers import SentenceTransformer, util
